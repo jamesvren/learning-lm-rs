@@ -71,25 +71,101 @@ pub fn masked_softmax(y: &mut Tensor<f32>) {
 }
 
 pub fn rms_norm(y: &mut Tensor<f32>, x: &Tensor<f32>, w: &Tensor<f32>, epsilon: f32) {
-    todo!("实现 rms_norm，计算前做一些必要的检查会帮助你后续调试")
+    let len = y.size();
+    assert!(len == x.size());
+    assert!(len % w.size() == 0);
+
+    let n = x.shape().last().unwrap();
+    let y = unsafe { y.data_mut() };
+    let x = x.data();
+    let w = w.data();
+
+    let sqr_sum = |x: &[f32]| x.iter().map(|x| x * x).sum::<f32>();
+    let mut sigma = 0_f32;
+    for i in 0..len {
+        if (i + 1) % n != 0 {
+            // calculate sigma
+            sigma = (sqr_sum(&x[i..i + n]) / *n as f32).sqrt();
+        }
+
+        // rsm = x * w / (sigma + epsilon)
+        y[i] = x[i] * w[i % n] / (sigma + epsilon);
+    }
+    //todo!("实现 rms_norm，计算前做一些必要的检查会帮助你后续调试")
 }
 
 // y = silu(x) * y
 // hint: this is an element-wise operation
 pub fn swiglu(y: &mut Tensor<f32>, x: &Tensor<f32>) {
-    // let len = y.size();
-    // assert!(len == x.size());
+    let len = y.size();
+    assert!(len == x.size());
 
-    // let _y = unsafe { y.data_mut() };
-    // let _x = x.data();
+    let y = unsafe { y.data_mut() };
+    let x = x.data();
 
-    todo!("实现 silu，这里给了一些前期准备工作的提示，你可以参考")
+    let sigmod = |x: f32| 1_f32 / (1_f32 + (-x).exp());
+    let silu = |x: f32| sigmod(x) * x;
+    for i in 0..len {
+        y[i] = silu(x[i]) * y[i];
+    }
+    //todo!("实现 silu，这里给了一些前期准备工作的提示，你可以参考")
+}
+
+pub fn matual_plus(a: &mut Tensor<f32>, b: &Tensor<f32>) {
+    let len_a = a.size();
+    assert!(len_a == b.size());
+
+    let a = unsafe { a.data_mut() };
+    let b = b.data();
+
+    for i in 0..len_a {
+        a[i] += b[i];
+    }
 }
 
 // C = beta * C + alpha * A @ B^T
 // hint: You don't need to do an explicit transpose of B
 pub fn matmul_transb(c: &mut Tensor<f32>, beta: f32, a: &Tensor<f32>, b: &Tensor<f32>, alpha: f32) {
-    todo!("实现 matmul_transb，计算前做一些必要的检查会帮助你后续调试");
+    let len_b = b.size();
+    let len_c = c.size();
+    // assume it is a 2 dim matrix
+    assert!(a.shape().len() == 2);
+    assert!(b.shape().len() == 2);
+
+    let xa = a.shape()[1];
+    let xb = b.shape()[1];
+    // assume share dim is equal
+    assert!(xa == xb);
+    assert!(len_c == a.shape()[0] * b.shape()[0]);
+
+    let c = unsafe { c.data_mut() };
+    let a = a.data();
+    let b = b.data();
+
+    let vec_mul = |a: &[f32], b: &[f32]| {
+        assert!(a.len() == b.len());
+
+        let mut s = 0_f32;
+        for i in 0..a.len() {
+            s += a[i] * b[i];
+        }
+        s
+    };
+
+    let mut ia = 0;
+    let mut ib = 0;
+    for i in 0..len_c {
+        c[i] *= beta;
+        c[i] += vec_mul(&a[ia..ia + xa], &b[ib..ib + xb]) * alpha;
+        // Step to next row of B
+        ib += xb;
+        if ib >= len_b {
+            // End of B, start from beginning and walk to next row of A
+            ia += xa;
+            ib = 0;
+        }
+    }
+    //todo!("实现 matmul_transb，计算前做一些必要的检查会帮助你后续调试");
 }
 
 // Dot product of two tensors (treated as vectors)
